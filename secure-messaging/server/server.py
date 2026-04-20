@@ -68,21 +68,24 @@ class RegisterRequest(BaseModel):
 
 # ── Endpoints HTTP ───────────────────────────────────────────────────────────
 
-@app.post("/register", status_code=201)
+@app.post("/register")
 async def register_user(req: RegisterRequest):
     """
-    Registra la llave pública de un usuario.
-    Valida que sea un PEM ECC válido antes de almacenarla.
-    """
-    if req.username in public_key_registry:
-        raise HTTPException(
-            status_code=409,
-            detail=f"El usuario '{req.username}' ya está registrado"
-        )
+    Registra o actualiza la llave pública de un usuario (upsert).
 
+    Permite re-registro para que si un cliente regenera llaves (nueva sesión,
+    contraseña olvidada, etc.) el servidor quede sincronizado con la llave vigente.
+    En producción esto requeriría prueba de posesión de la llave privada (challenge-response).
+    """
+    is_update = req.username in public_key_registry
     public_key_registry[req.username] = req.public_key
+
+    if is_update:
+        logger.info(f"Llave pública actualizada: {req.username}")
+        return {"status": "updated", "username": req.username}
+
     logger.info(f"Usuario registrado: {req.username}")
-    return {"status": "ok", "username": req.username, "message": "Usuario registrado correctamente"}
+    return {"status": "ok", "username": req.username}
 
 
 @app.get("/keys/{username}")

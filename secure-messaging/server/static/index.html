@@ -431,12 +431,13 @@ async function importPrivateKeyRaw(pkcs8Buf) {
 }
 
 async function importPublicKeyFromSpki(spkiBuf) {
-  // Las llaves públicas ECDH requieren usages vacíos en Web Crypto API.
-  // Solo la llave PRIVADA tiene ["deriveKey", "deriveBits"].
+  // extractable:true permite exportar la llave pública (necesario para fingerprint).
+  // Las llaves públicas son públicas por definición — no hay riesgo de seguridad.
+  // usages:[] porque las llaves públicas ECDH no ejecutan operaciones por sí solas.
   return crypto.importKey(
     "spki", spkiBuf,
     { name: "ECDH", namedCurve: "P-384" },
-    false, []
+    true, []
   );
 }
 
@@ -449,11 +450,37 @@ async function importPublicKeyFromPEM(pem) {
 }
 
 // ── Derivar llave AES-256 desde secreto ECDH ────────────────────────────────
+//
+// IMPORTANTE: NO usar deriveKey(ECDH → AES) directamente porque cada navegador
+// puede implementar la KDF interna de forma distinta (Chrome ≠ Safari ≠ Firefox).
+// En su lugar: deriveBits (ECDH puro) → importKey(HKDF) → deriveKey(AES-GCM).
+// Esto garantiza resultados idénticos entre navegadores y con el cliente Python.
+//
+// salt: 48 bytes de ceros = equivalente a salt=None en Python cryptography para SHA-384
+// info: debe coincidir con _HKDF_INFO en crypto.py del cliente Python
 
 async function deriveAESKey(privateKey, publicKey) {
-  return crypto.deriveKey(
+  // Paso 1: ECDH puro → bits del secreto compartido
+  const rawBits = await crypto.deriveBits(
     { name: "ECDH", public: publicKey },
     privateKey,
+    384   // P-384 produce 384 bits
+  );
+
+  // Paso 2: Importar los bits como material HKDF
+  const hkdfKey = await crypto.importKey(
+    "raw", rawBits, "HKDF", false, ["deriveKey"]
+  );
+
+  // Paso 3: HKDF-SHA384 → llave AES-256-GCM
+  return crypto.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-384",
+      salt: new Uint8Array(48),  // 48 ceros = salt=None de Python (HashLen para SHA-384)
+      info: enc.encode("secure-messaging-v1-aes256gcm")
+    },
+    hkdfKey,
     { name: "AES-GCM", length: 256 },
     false, ["encrypt", "decrypt"]
   );
@@ -512,9 +539,20 @@ async function decryptMessage(payload, myPrivateKey) {
 }
 
 // ── Fingerprint ──────────────────────────────────────────────────────────────
+// Calcula el fingerprint desde el PEM string directamente (decodifica el DER
+// sin llamar a exportKey), evitando problemas con llaves no-extractable.
 
-async function getFingerprint(publicKey) {
-  const spki   = await crypto.exportKey("spki", publicKey);
+async function getFingerprint(publicKeyOrPEM) {
+  let spki;
+  if (typeof publicKeyOrPEM === "string") {
+    const b64 = publicKeyOrPEM
+      .replace(/-----BEGIN PUBLIC KEY-----/, '')
+      .replace(/-----END PUBLIC KEY-----/, '')
+      .replace(/\s/g, '');
+    spki = b64decode(b64);
+  } else {
+    spki = await crypto.exportKey("spki", publicKeyOrPEM);
+  }
   const digest = await crypto.digest("SHA-256", spki);
   const hex    = bufToHex(digest).toUpperCase();
   return hex.match(/.{4}/g).slice(0, 8).join(":");
@@ -666,16 +704,18 @@ async function connectUser(username, password) {
     body: JSON.stringify({ username, public_key: pubPEM })
   });
 
-  if (!resp.ok && resp.status !== 409) {
-    const err = await resp.json();
-    throw new Error(err.detail || "Error al registrar en servidor");
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `Error al registrar en servidor (${resp.status})`);
   }
+  const regData = await resp.json();
+  dbg(`Registro: ${regData.status} (${username})`, "#3fb950");
 
   myUsername   = username;
   myPrivateKey = privKey;
   myPublicKey  = pubKey;
 
-  const fp = await getFingerprint(pubKey);
+  const fp = await getFingerprint(pubPEM);
   document.getElementById("fp-display").textContent = fp;
   document.getElementById("hdr-username").textContent = username;
 

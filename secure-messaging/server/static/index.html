@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mensajería Segura E2E</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d1117;
+      --bg2:      #161b22;
+      --bg3:      #21262d;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --text-dim: #8b949e;
+      --green:    #3fb950;
+      --blue:     #58a6ff;
+      --red:      #f85149;
+      --yellow:   #d29922;
+      --purple:   #bc8cff;
+      --radius:   8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 12px;
+    }
+
+    #login-screen h1 { font-size: 1.4rem; color: var(--blue); }
+    #login-screen p  { color: var(--text-dim); font-size: 0.85rem; text-align: center; max-width: 340px; }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 320px;
+      background: var(--bg2);
+      padding: 24px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .login-form label { font-size: 0.8rem; color: var(--text-dim); }
+
+    input {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: var(--blue); }
+
+    button {
+      background: var(--blue);
+      color: #000;
+      border: none;
+      padding: 9px 16px;
+      border-radius: var(--radius);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: opacity .2s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.danger { background: var(--red); color: #fff; }
+    button.ghost  { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+    button.ghost:hover { color: var(--text); border-color: var(--text-dim); }
+
+    #login-error { color: var(--red); font-size: 0.8rem; text-align: center; min-height: 16px; }
+
+    /* ── App principal ── */
+    #app-screen { display: none; flex-direction: column; height: 100vh; }
+
+    header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    header .title { font-size: 1rem; font-weight: 600; color: var(--blue); }
+    header .user-info { display: flex; align-items: center; gap: 10px; }
+    header .badge {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    header .badge span { color: var(--green); font-weight: 600; }
+
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    aside {
+      width: 220px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    aside h3 {
+      padding: 12px 16px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+    }
+
+    #user-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+    .user-item {
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 6px;
+      margin: 2px 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+      transition: background .15s;
+    }
+    .user-item:hover { background: var(--bg3); }
+    .user-item.active { background: var(--bg3); color: var(--blue); }
+    .user-item .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.online  { background: var(--green); }
+    .dot.offline { background: var(--text-dim); }
+    .user-item.self { opacity: 0.45; cursor: default; }
+
+    .fingerprint-box {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+    .fingerprint-box .fp-label { margin-bottom: 4px; }
+    .fingerprint-box .fp-value {
+      font-family: monospace;
+      color: var(--yellow);
+      word-break: break-all;
+      font-size: 0.68rem;
+    }
+
+    /* ── Chat ── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .chat-header .recipient-name { font-weight: 600; }
+    .chat-header .lock-icon { color: var(--green); font-size: 0.9rem; }
+    .chat-header .hint { color: var(--text-dim); font-size: 0.75rem; }
+    #no-chat-hint {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg {
+      max-width: 68%;
+      padding: 9px 14px;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .msg.sent {
+      align-self: flex-end;
+      background: #1a4a2e;
+      border: 1px solid #2d6a42;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.received {
+      align-self: flex-start;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.system-msg {
+      align-self: center;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      border: none;
+      padding: 2px 0;
+    }
+    .msg.error-msg {
+      align-self: center;
+      background: #2d1515;
+      color: var(--red);
+      border: 1px solid #5a2020;
+      font-size: 0.78rem;
+    }
+    .msg .meta {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .msg .meta .lock { color: var(--green); }
+
+    .msg-input-area {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+    .msg-input-area input { flex: 1; }
+    .msg-input-area input:disabled { opacity: 0.4; }
+
+    /* ── Log de depuración ── */
+    #debug-panel {
+      display: none;
+      height: 130px;
+      background: #0a0e14;
+      border-top: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 8px 16px;
+      font-family: monospace;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+    #debug-panel.visible { display: block; }
+    #debug-toggle {
+      position: fixed;
+      bottom: 10px;
+      right: 14px;
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      background: var(--bg3);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 100;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ── Pantalla de login ─────────────────────────────────────────────── -->
+<div id="login-screen">
+  <h1>🔐 Mensajería Segura</h1>
+  <p>End-to-end encryption · ECC secp384r1 · AES-256-GCM<br>Las llaves privadas nunca salen de tu navegador.</p>
+  <div class="login-form">
+    <label for="inp-username">Nombre de usuario</label>
+    <input id="inp-username" type="text" placeholder="ej. alice" autocomplete="off" maxlength="32" />
+    <label for="inp-password">Contraseña (cifra tu llave privada)</label>
+    <input id="inp-password" type="password" placeholder="mínimo 8 caracteres" />
+    <button id="btn-connect">Conectar</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ── App principal ─────────────────────────────────────────────────── -->
+<div id="app-screen">
+  <header>
+    <span class="title">🔐 Mensajería Segura E2E</span>
+    <div class="user-info">
+      <span class="badge">Conectado como <span id="hdr-username">—</span></span>
+      <button class="ghost" id="btn-logout" style="padding:4px 10px;font-size:0.78rem;">Salir</button>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <aside>
+      <h3>Usuarios</h3>
+      <div id="user-list"></div>
+      <div class="fingerprint-box">
+        <div class="fp-label">Tu fingerprint (compartir para verificar identidad):</div>
+        <div class="fp-value" id="fp-display">—</div>
+      </div>
+    </aside>
+
+    <div class="chat-area">
+      <div id="no-chat-hint">← Selecciona un usuario para chatear</div>
+
+      <div id="chat-container" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+        <div class="chat-header">
+          <span class="lock-icon">🔒</span>
+          <span class="recipient-name" id="chat-recipient-name">—</span>
+          <span class="hint">· cifrado extremo a extremo</span>
+        </div>
+        <div id="messages"></div>
+        <div class="msg-input-area">
+          <input id="msg-input" type="text" placeholder="Escribe un mensaje y presiona Enter..." disabled />
+          <button id="btn-send" disabled>Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="debug-panel"></div>
+</div>
+
+<button id="debug-toggle">debug</button>
+
+<!-- ── Lógica criptográfica (Web Crypto API) ─────────────────────────── -->
+<script>
+"use strict";
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CRYPTO — ECDH + AES-256-GCM usando Web Crypto API (nativa del navegador)
+//
+//  Web Crypto usa la misma matemática que el cliente Python:
+//  secp384r1 para ECDH, AES-256-GCM para cifrado autenticado.
+//  Las llaves privadas se almacenan en sessionStorage cifradas con
+//  la contraseña del usuario (PBKDF2 → AES-GCM).
+// ════════════════════════════════════════════════════════════════════════════
+
+const crypto = window.crypto.subtle;
+
+// ── Utilidades de encoding ───────────────────────────────────────────────────
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function b64encode(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function b64decode(str) {
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+function bufToHex(buf) {
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ── Gestión de llaves ────────────────────────────────────────────────────────
+
+async function generateKeyPair() {
+  return crypto.generateKey(
+    { name: "ECDH", namedCurve: "P-384" },
+    true,   // exportable
+    ["deriveKey", "deriveBits"]
+  );
+}
+
+async function exportPublicKeyPEM(publicKey) {
+  const spki = await crypto.exportKey("spki", publicKey);
+  const b64  = b64encode(spki);
+  const pem  = `-----BEGIN PUBLIC KEY-----\n${b64.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----\n`;
+  return pem;
+}
+
+async function exportPrivateKeyRaw(privateKey) {
+  return crypto.exportKey("pkcs8", privateKey);
+}
+
+async function importPrivateKeyRaw(pkcs8Buf) {
+  return crypto.importKey(
+    "pkcs8", pkcs8Buf,
+    { name: "ECDH", namedCurve: "P-384" },
+    false, ["deriveKey", "deriveBits"]
+  );
+}
+
+async function importPublicKeyFromSpki(spkiBuf) {
+  // Las llaves públicas ECDH requieren usages vacíos en Web Crypto API.
+  // Solo la llave PRIVADA tiene ["deriveKey", "deriveBits"].
+  return crypto.importKey(
+    "spki", spkiBuf,
+    { name: "ECDH", namedCurve: "P-384" },
+    false, []
+  );
+}
+
+async function importPublicKeyFromPEM(pem) {
+  const b64 = pem
+    .replace(/-----BEGIN PUBLIC KEY-----/, '')
+    .replace(/-----END PUBLIC KEY-----/, '')
+    .replace(/\s/g, '');
+  return importPublicKeyFromSpki(b64decode(b64));
+}
+
+// ── Derivar llave AES-256 desde secreto ECDH ────────────────────────────────
+
+async function deriveAESKey(privateKey, publicKey) {
+  return crypto.deriveKey(
+    { name: "ECDH", public: publicKey },
+    privateKey,
+    { name: "AES-GCM", length: 256 },
+    false, ["encrypt", "decrypt"]
+  );
+}
+
+// ── Cifrar ───────────────────────────────────────────────────────────────────
+
+async function encryptMessage(plaintext, recipientPublicKey, senderUsername) {
+  // Llave efímera — una por mensaje (Perfect Forward Secrecy)
+  const ephemeralPair = await generateKeyPair();
+
+  const aesKey = await deriveAESKey(ephemeralPair.privateKey, recipientPublicKey);
+
+  const nonce = window.crypto.getRandomValues(new Uint8Array(12));
+
+  // AAD vincula el mensaje al remitente (integridad de metadatos)
+  const aad = enc.encode(senderUsername);
+
+  const ciphertext = await crypto.encrypt(
+    { name: "AES-GCM", iv: nonce, additionalData: aad },
+    aesKey,
+    enc.encode(plaintext)
+  );
+
+  const ephPubSpki = await crypto.exportKey("spki", ephemeralPair.publicKey);
+  const ephPubPEM  = await exportPublicKeyPEM(ephemeralPair.publicKey);
+
+  return {
+    ephemeral_public_key: b64encode(enc.encode(ephPubPEM)),
+    nonce:      b64encode(nonce),
+    ciphertext: b64encode(ciphertext),
+    aad:        b64encode(aad)
+  };
+}
+
+// ── Descifrar ────────────────────────────────────────────────────────────────
+
+async function decryptMessage(payload, myPrivateKey) {
+  const ephPubPEMBytes = b64decode(payload.ephemeral_public_key);
+  const ephPubPEM      = dec.decode(ephPubPEMBytes);
+  const nonce          = b64decode(payload.nonce);
+  const ciphertext     = b64decode(payload.ciphertext);
+  const aad            = b64decode(payload.aad || '');
+
+  const ephemeralPublicKey = await importPublicKeyFromPEM(ephPubPEM);
+  const aesKey = await deriveAESKey(myPrivateKey, ephemeralPublicKey);
+
+  const plainBuf = await crypto.decrypt(
+    { name: "AES-GCM", iv: nonce, additionalData: aad },
+    aesKey,
+    ciphertext
+  );
+
+  const senderFromAAD = dec.decode(aad);
+  return { plaintext: dec.decode(plainBuf), sender: senderFromAAD };
+}
+
+// ── Fingerprint ──────────────────────────────────────────────────────────────
+
+async function getFingerprint(publicKey) {
+  const spki   = await crypto.exportKey("spki", publicKey);
+  const digest = await crypto.digest("SHA-256", spki);
+  const hex    = bufToHex(digest).toUpperCase();
+  return hex.match(/.{4}/g).slice(0, 8).join(":");
+}
+
+// ── Persistencia de llave privada en sessionStorage ──────────────────────────
+// Cifrada con AES-GCM derivado de la contraseña (PBKDF2).
+// SessionStorage se limpia al cerrar la pestaña.
+
+async function _deriveStorageKey(password, salt) {
+  const rawKey = await crypto.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.deriveKey(
+    { name: "PBKDF2", salt, iterations: 200_000, hash: "SHA-384" },
+    rawKey,
+    { name: "AES-GCM", length: 256 },
+    false, ["encrypt", "decrypt"]
+  );
+}
+
+async function savePrivateKey(username, privateKey, password) {
+  const pkcs8  = await exportPrivateKeyRaw(privateKey);
+  const salt   = window.crypto.getRandomValues(new Uint8Array(16));
+  const nonce  = window.crypto.getRandomValues(new Uint8Array(12));
+  const encKey = await _deriveStorageKey(password, salt);
+  const enc_   = await crypto.encrypt({ name: "AES-GCM", iv: nonce }, encKey, pkcs8);
+
+  sessionStorage.setItem(`privkey_${username}`, JSON.stringify({
+    salt: b64encode(salt),
+    nonce: b64encode(nonce),
+    data: b64encode(enc_)
+  }));
+}
+
+async function loadPrivateKey(username, password) {
+  const stored = sessionStorage.getItem(`privkey_${username}`);
+  if (!stored) return null;
+  const { salt, nonce, data } = JSON.parse(stored);
+
+  const encKey = await _deriveStorageKey(password, b64decode(salt));
+  try {
+    const pkcs8 = await crypto.decrypt(
+      { name: "AES-GCM", iv: b64decode(nonce) },
+      encKey,
+      b64decode(data)
+    );
+    return importPrivateKeyRaw(pkcs8);
+  } catch {
+    return null;
+  }
+}
+
+function savePublicKeyPEM(username, pem) {
+  sessionStorage.setItem(`pubkey_${username}`, pem);
+}
+function loadPublicKeyPEM(username) {
+  return sessionStorage.getItem(`pubkey_${username}`);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+//  UI
+// ════════════════════════════════════════════════════════════════════════════
+
+let myUsername    = "";
+let myPrivateKey  = null;
+let myPublicKey   = null;
+let ws            = null;
+let activeChat    = null;   // username del chat activo
+let onlineUsers   = [];
+
+const SERVER_HTTP = `${location.protocol}//${location.hostname}:8000`;
+const SERVER_WS   = `ws://${location.hostname}:8000`;
+
+// ── Debug log ────────────────────────────────────────────────────────────────
+
+const debugPanel  = document.getElementById("debug-panel");
+const debugToggle = document.getElementById("debug-toggle");
+debugToggle.onclick = () => debugPanel.classList.toggle("visible");
+
+function dbg(msg, color = "#8b949e") {
+  const ts  = new Date().toLocaleTimeString();
+  const div = document.createElement("div");
+  div.innerHTML = `<span style="color:#555">[${ts}]</span> <span style="color:${color}">${msg}</span>`;
+  debugPanel.appendChild(div);
+  debugPanel.scrollTop = debugPanel.scrollHeight;
+}
+
+// ── Login ────────────────────────────────────────────────────────────────────
+
+document.getElementById("btn-connect").onclick = handleLogin;
+document.getElementById("inp-password").onkeydown = e => { if (e.key === "Enter") handleLogin(); };
+document.getElementById("inp-username").onkeydown = e => { if (e.key === "Enter") handleLogin(); };
+
+async function handleLogin() {
+  const username = document.getElementById("inp-username").value.trim().toLowerCase();
+  const password = document.getElementById("inp-password").value;
+  const errEl    = document.getElementById("login-error");
+
+  errEl.textContent = "";
+
+  if (!username || username.length < 3) return setLoginError("El username debe tener al menos 3 caracteres.");
+  if (!password || password.length < 8) return setLoginError("La contraseña debe tener al menos 8 caracteres.");
+  if (!/^[a-z0-9_-]+$/.test(username))  return setLoginError("Solo letras, números, _ y -");
+
+  const btn = document.getElementById("btn-connect");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    await connectUser(username, password);
+  } catch(e) {
+    setLoginError(e.message || "Error al conectar.");
+    btn.disabled = false;
+    btn.textContent = "Conectar";
+  }
+}
+
+function setLoginError(msg) {
+  document.getElementById("login-error").textContent = msg;
+  document.getElementById("btn-connect").disabled = false;
+  document.getElementById("btn-connect").textContent = "Conectar";
+}
+
+async function connectUser(username, password) {
+  // Intentar cargar llave privada existente
+  let privKey = await loadPrivateKey(username, password);
+  let pubPEM  = loadPublicKeyPEM(username);
+  let pubKey;
+
+  if (!privKey || !pubPEM) {
+    dbg("Generando nuevo par de llaves...", "#58a6ff");
+    const pair = await generateKeyPair();
+    privKey = pair.privateKey;
+    pubKey  = pair.publicKey;
+    pubPEM  = await exportPublicKeyPEM(pubKey);
+
+    await savePrivateKey(username, privKey, password);
+    savePublicKeyPEM(username, pubPEM);
+    dbg("Par de llaves generado y almacenado.", "#3fb950");
+  } else {
+    dbg("Llaves cargadas desde sessionStorage.", "#3fb950");
+    pubKey = await importPublicKeyFromPEM(pubPEM);
+  }
+
+  // Registrar llave pública en el servidor
+  const resp = await fetch(`${SERVER_HTTP}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, public_key: pubPEM })
+  });
+
+  if (!resp.ok && resp.status !== 409) {
+    const err = await resp.json();
+    throw new Error(err.detail || "Error al registrar en servidor");
+  }
+
+  myUsername   = username;
+  myPrivateKey = privKey;
+  myPublicKey  = pubKey;
+
+  const fp = await getFingerprint(pubKey);
+  document.getElementById("fp-display").textContent = fp;
+  document.getElementById("hdr-username").textContent = username;
+
+  dbg(`Registrado como '${username}'. Fingerprint: ${fp}`, "#d29922");
+
+  // Conectar WebSocket
+  connectWebSocket();
+
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app-screen").style.display  = "flex";
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+
+function connectWebSocket() {
+  ws = new WebSocket(`${SERVER_WS}/ws/${myUsername}`);
+
+  ws.onopen = () => dbg("WebSocket conectado.", "#3fb950");
+
+  ws.onmessage = async (event) => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+
+    if (data.system === "user_list_update") {
+      onlineUsers = data.users || [];
+      renderUserList();
+      return;
+    }
+
+    if (data.error) {
+      appendSystemMsg(`⚠ ${data.error}`, "error");
+      dbg(`Error del servidor: ${data.error}`, "#f85149");
+      return;
+    }
+
+    if (data.from && data.encrypted_payload) {
+      dbg(`Mensaje cifrado recibido de '${data.from}'. Descifrando...`, "#bc8cff");
+      try {
+        const { plaintext, sender } = await decryptMessage(data.encrypted_payload, myPrivateKey);
+
+        if (sender && sender !== data.from) {
+          appendSystemMsg(`⚠ AAD no coincide: servidor dice '${data.from}', AAD dice '${sender}'`, "error");
+          dbg("ALERTA: posible replay o manipulación de metadata", "#f85149");
+          return;
+        }
+
+        dbg(`Descifrado OK. De: ${data.from}`, "#3fb950");
+        appendMessage(data.from, plaintext, "received");
+
+      } catch(e) {
+        appendSystemMsg(`⚠ Mensaje de '${data.from}' RECHAZADO: verificación de integridad fallida`, "error");
+        dbg(`Descifrado fallido: ${e.message}`, "#f85149");
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    dbg("WebSocket desconectado.", "#f85149");
+    appendSystemMsg("Conexión perdida con el servidor.", "error");
+  };
+
+  ws.onerror = (e) => dbg(`WebSocket error: ${e}`, "#f85149");
+}
+
+// ── Lista de usuarios ────────────────────────────────────────────────────────
+
+function renderUserList() {
+  const list = document.getElementById("user-list");
+  list.innerHTML = "";
+
+  onlineUsers.forEach(u => {
+    const div = document.createElement("div");
+    div.className = "user-item" + (u.username === myUsername ? " self" : "") + (u.username === activeChat ? " active" : "");
+
+    div.innerHTML = `
+      <span class="dot ${u.online ? 'online' : 'offline'}"></span>
+      ${u.username}${u.username === myUsername ? ' (tú)' : ''}
+    `;
+
+    if (u.username !== myUsername) {
+      div.onclick = () => openChat(u.username);
+    }
+
+    list.appendChild(div);
+  });
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+function openChat(username) {
+  activeChat = username;
+  document.getElementById("no-chat-hint").style.display   = "none";
+  document.getElementById("chat-container").style.display = "flex";
+  document.getElementById("chat-recipient-name").textContent = username;
+  document.getElementById("msg-input").disabled  = false;
+  document.getElementById("btn-send").disabled   = false;
+  document.getElementById("messages").innerHTML  = "";
+  document.getElementById("msg-input").focus();
+  renderUserList();
+  appendSystemMsg(`Chat abierto con ${username} · cifrado E2E activo 🔒`);
+}
+
+document.getElementById("btn-send").onclick   = sendMessage;
+document.getElementById("msg-input").onkeydown = e => { if (e.key === "Enter") sendMessage(); };
+
+async function sendMessage() {
+  const input  = document.getElementById("msg-input");
+  const text   = input.value.trim();
+  if (!text || !activeChat) return;
+
+  input.value = "";
+  input.focus();
+
+  try {
+    // Obtener llave pública del destinatario
+    const resp = await fetch(`${SERVER_HTTP}/keys/${activeChat}`);
+    if (!resp.ok) {
+      appendSystemMsg(`⚠ No se pudo obtener la llave de '${activeChat}'`, "error");
+      return;
+    }
+    const { public_key: pubPEM } = await resp.json();
+    const recipientPubKey = await importPublicKeyFromPEM(pubPEM);
+
+    dbg(`Cifrando mensaje para '${activeChat}'...`, "#58a6ff");
+    const payload = await encryptMessage(text, recipientPubKey, myUsername);
+
+    ws.send(JSON.stringify({ to: activeChat, encrypted_payload: payload }));
+    appendMessage("tú", text, "sent");
+    dbg(`Mensaje cifrado enviado a '${activeChat}'.`, "#3fb950");
+
+  } catch(e) {
+    appendSystemMsg(`⚠ Error al cifrar/enviar: ${e.message}`, "error");
+    dbg(`Error: ${e.message}`, "#f85149");
+  }
+}
+
+function appendMessage(sender, text, type) {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = `msg ${type}`;
+
+  const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  div.innerHTML = `
+    ${escapeHTML(text)}
+    <div class="meta">
+      <span class="lock">🔒</span>
+      <span>${sender} · ${ts}</span>
+    </div>
+  `;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendSystemMsg(text, type = "system") {
+  const msgs = document.getElementById("messages");
+  const div  = document.createElement("div");
+  div.className = type === "error" ? "msg error-msg" : "msg system-msg";
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escapeHTML(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Logout ───────────────────────────────────────────────────────────────────
+
+document.getElementById("btn-logout").onclick = () => {
+  if (ws) ws.close();
+  sessionStorage.clear();
+  location.reload();
+};
+</script>
+</body>
+</html>
